@@ -1,6 +1,6 @@
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def get_crypto_data():
     url = "https://api.coingecko.com/api/v3/coins/markets"
@@ -30,7 +30,10 @@ def get_cake():
     return res[0]
 
 def format_msg(coins, cake):
-    now = datetime.now().strftime("%H:%M")
+    # وقت ایران (UTC + 3:30)
+    iran_time = datetime.utcnow() + timedelta(hours=3, minutes=30)
+    now = iran_time.strftime("%H:%M")
+    
     msg = f"📊 Top 10 Crypto ({now})\n\n"
     
     for i, coin in enumerate(coins, 1):
@@ -39,9 +42,15 @@ def format_msg(coins, cake):
         high = coin.get('high_24h') or 0
         low = coin.get('low_24h') or 0
         
+        # تعیین فرمت نمایش بر اساس قیمت
+        if coin['current_price'] < 1:
+            price_fmt = "${:,.6f}"
+        else:
+            price_fmt = "${:,.2f}"
+            
         msg += f"{i}. {coin['name']}\n"
-        msg += f"   ${coin['current_price']:,.2f} {emoji} {change:+.2f}%\n"
-        msg += f"   📈 ${high:,.2f} | 📉 ${low:,.2f}\n\n"
+        msg += f"   {price_fmt.format(coin['current_price'])} {emoji} {change:+.2f}%\n"
+        msg += f"   📈 {price_fmt.format(high)} | 📉 {price_fmt.format(low)}\n\n"
     
     msg += "---\n🥞 CAKE\n"
     change_cake = cake['price_change_percentage_24h'] or 0
