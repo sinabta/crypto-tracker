@@ -13,7 +13,6 @@ def get_prices():
         for coin in response:
             symbol = coin['symbol'].lower()
             name = coin['name'].lower()
-            # Filter out stablecoins and wrapped/derivative coins
             if any(x in symbol for x in blacklist) or any(x in name for x in ['wrapped', 'stable']):
                 continue
             final_list.append(coin)
@@ -23,14 +22,12 @@ def get_prices():
         cake_res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=pancakeswap-token&vs_currencies=usd").json()
         cake_price = cake_res.get('pancakeswap-token', {}).get('usd', 'N/A')
 
-        # پیام شیک و مرتب
-        msg = "🚀 *گزارش زنده بازار کریپتو*\n"
+        msg = "🚀 گزارش زنده بازار کریپتو\n"
         msg += "━━━━━━━━━━━━━━\n"
         for i, coin in enumerate(final_list, 1):
-            # Escaping characters is not fully needed with basic Markdown, but let's be safe
-            msg += f"🔹 {coin['symbol'].upper()}: `{coin['current_price']:,.2f}$`\n"
+            msg += f"🔹 {coin['symbol'].upper()}: {coin['current_price']:,}$\n"
         msg += "━━━━━━━━━━━━━━\n"
-        msg += f"🍰 CAKE: `{cake_price}$`\n"
+        msg += f"🍰 CAKE: {cake_price}$\n"
         msg += "━━━━━━━━━━━━━━\n"
         msg += "⏰ بروزرسانی: هر ۱ ساعت"
         
@@ -42,8 +39,12 @@ def send_telegram(message):
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-    requests.post(url, data=payload)
+    payload = {"chat_id": chat_id, "text": message}
+    try:
+        res = requests.post(url, data=payload)
+        print(f"DEBUG: Status: {res.status_code}, Response: {res.text}")
+    except Exception as e:
+        print(f"DEBUG: Error: {e}")
 
 if __name__ == "__main__":
     send_telegram(get_prices())
