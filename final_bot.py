@@ -13,12 +13,14 @@ def get_crypto_data():
     }
     response = requests.get(url, params=params).json()
     
-    blacklist = ['usdt', 'usdc', 'steth', 'wbtc', 'dai', 'weth', 'usdeb', 'paxg', 'fdusd']
+    # لیست سیاه برای حذف سکه‌های بی‌ربط یا پِگ‌شده مثل HELOC یا استیبل‌کوین‌ها
+    blacklist = ['heloc', 'figr', 'usdt', 'usdc', 'steth', 'wbtc', 'dai', 'weth', 'usdeb', 'paxg', 'fdusd', 'wrapped', 'stable']
+    
     top_coins = []
     for coin in response:
         symbol = coin['symbol'].lower()
         name = coin['name'].lower()
-        if any(x in symbol for x in blacklist) or any(x in name for x in ['wrapped', 'stable']):
+        if any(x in symbol for x in blacklist) or any(x in name for x in blacklist):
             continue
         top_coins.append(coin)
         if len(top_coins) == 10: 
@@ -30,7 +32,7 @@ def get_cake():
     return res[0]
 
 def format_msg(coins, cake):
-    # وقت ایران (UTC + 3:30)
+    # زمان به وقت ایران (UTC + 3:30)
     iran_time = datetime.utcnow() + timedelta(hours=3, minutes=30)
     now = iran_time.strftime("%H:%M")
     
@@ -42,9 +44,9 @@ def format_msg(coins, cake):
         high = coin.get('high_24h') or 0
         low = coin.get('low_24h') or 0
         
-        # تعیین فرمت نمایش بر اساس قیمت
+        # تعیین تعداد اعشار: زیر ۱ دلار ۳ رقم اعشار، بالای ۱ دلار ۲ رقم اعشار
         if coin['current_price'] < 1:
-            price_fmt = "${:,.6f}"
+            price_fmt = "${:,.3f}"
         else:
             price_fmt = "${:,.2f}"
             
@@ -57,8 +59,10 @@ def format_msg(coins, cake):
     high_cake = cake.get('high_24h') or 0
     low_cake = cake.get('low_24h') or 0
     
-    msg += f"   ${cake['current_price']:,.2f} {'🟢' if change_cake >= 0 else '🔴'} {change_cake:+.2f}%\n"
-    msg += f"   📈 ${high_cake:,.2f} | 📉 ${low_cake:,.2f}"
+    cake_fmt = "${:,.3f}" if cake['current_price'] < 1 else "${:,.2f}"
+    
+    msg += f"   {cake_fmt.format(cake['current_price'])} {'🟢' if change_cake >= 0 else '🔴'} {change_cake:+.2f}%\n"
+    msg += f"   📈 {cake_fmt.format(high_cake)} | 📉 {cake_fmt.format(low_cake)}"
     return msg
 
 def send_telegram(message):
