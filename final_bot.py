@@ -46,7 +46,7 @@ def format_msg(coins, cake):
         
         # تعیین تعداد اعشار: زیر ۱ دلار ۳ رقم اعشار، بالای ۱ دلار ۲ رقم اعشار
         if coin['current_price'] < 1:
-            price_fmt = "${:,.3f}"
+            price_fmt = "${:,.4f}"
         else:
             price_fmt = "${:,.2f}"
             
