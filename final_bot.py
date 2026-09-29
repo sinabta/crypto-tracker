@@ -1,78 +1,92 @@
 import requests
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+BINANCE = "https://api.binance.com/api/v3"
+
+# Stablecoins, fiat pairs, and wrapped tokens to exclude
+BLACKLIST = {
+    "USDC", "BUSD", "TUSD", "DAI", "FDUSD", "USDP", "USDD", "EUR",
+    "GBP", "AUD", "BRL", "TRY", "AEUR", "UST", "PAXG", "WBTC",
+    "STETH", "WBETH", "BETH", "USD1", "BIDR", "USDCUSDT", "FDUSDUSDT",
+}
+
 
 def get_crypto_data():
-    url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": 50,
-        "page": 1,
-        "price_change_percentage": "24h"
-    }
-    response = requests.get(url, params=params).json()
-    
-    # لیست سیاه برای حذف سکه‌های بی‌ربط یا پِگ‌شده مثل HELOC یا استیبل‌کوین‌ها
-    blacklist = ['heloc', 'figr', 'usdt', 'usdc', 'steth', 'wbtc', 'dai', 'weth', 'usdeb', 'paxg', 'fdusd', 'wrapped', 'stable']
-    
-    top_coins = []
-    for coin in response:
-        symbol = coin['symbol'].lower()
-        name = coin['name'].lower()
-        if any(x in symbol for x in blacklist) or any(x in name for x in blacklist):
+    """Top 10 USDT pairs by 24h volume from Binance (no API key)."""
+    resp = requests.get(f"{BINANCE}/ticker/24hr", timeout=15)
+    resp.raise_for_status()
+    all_tickers = resp.json()
+
+    usdt_pairs = []
+    for t in all_tickers:
+        if not t["symbol"].endswith("USDT"):
             continue
-        top_coins.append(coin)
-        if len(top_coins) == 10: 
-            break
-    return top_coins
+        base = t["symbol"][:-4]
+        if base in BLACKLIST:
+            continue
+        usdt_pairs.append(t)
+
+    usdt_pairs.sort(key=lambda t: float(t.get("quoteVolume", 0)), reverse=True)
+    return usdt_pairs[:10]
+
 
 def get_cake():
-    res = requests.get("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=pancakeswap-token&price_change_percentage=24h").json()
-    return res[0]
+    resp = requests.get(f"{BINANCE}/ticker/24hr", params={"symbol": "CAKEUSDT"}, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
 
 def format_msg(coins, cake):
-    # زمان به وقت ایران (UTC + 3:30)
-    iran_time = datetime.utcnow() + timedelta(hours=3, minutes=30)
+    iran_time = datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)
     now = iran_time.strftime("%H:%M")
-    
-    msg = f"📊 Top 10 Crypto ({now})\n\n"
-    
+
+    msg = f"\U0001f4ca Top 10 Crypto ({now})\n\n"
+
     for i, coin in enumerate(coins, 1):
-        change = coin['price_change_percentage_24h'] or 0
-        emoji = "🟢" if change >= 0 else "🔴"
-        high = coin.get('high_24h') or 0
-        low = coin.get('low_24h') or 0
-        
-        # تعیین تعداد اعشار: زیر ۱ دلار ۳ رقم اعشار، بالای ۱ دلار ۲ رقم اعشار
-        if coin['current_price'] < 1:
-            price_fmt = "${:,.4f}"
-        else:
-            price_fmt = "${:,.2f}"
-            
-        msg += f"{i}. {coin['name']}\n"
-        msg += f"   {price_fmt.format(coin['current_price'])} {emoji} {change:+.2f}%\n"
-        msg += f"   📈 {price_fmt.format(high)} | 📉 {price_fmt.format(low)}\n\n"
-    
-    msg += "---\n🥞 CAKE\n"
-    change_cake = cake['price_change_percentage_24h'] or 0
-    high_cake = cake.get('high_24h') or 0
-    low_cake = cake.get('low_24h') or 0
-    
-    cake_fmt = "${:,.3f}" if cake['current_price'] < 1 else "${:,.2f}"
-    
-    msg += f"   {cake_fmt.format(cake['current_price'])} {'🟢' if change_cake >= 0 else '🔴'} {change_cake:+.2f}%\n"
-    msg += f"   📈 {cake_fmt.format(high_cake)} | 📉 {cake_fmt.format(low_cake)}"
+        price = float(coin["lastPrice"])
+        change = float(coin["priceChangePercent"])
+        high = float(coin["highPrice"])
+        low = float(coin["lowPrice"])
+        emoji = "\U0001f7e2" if change >= 0 else "\U0001f534"
+        fmt = "${:,.4f}" if price < 1 else "${:,.2f}"
+        symbol = coin["symbol"].replace("USDT", "")
+
+        msg += f"{i}. {symbol}\n"
+        msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n"
+        msg += f"   \U0001f4c8 {fmt.format(high)} | \U0001f4c9 {fmt.format(low)}\n\n"
+
+    cp = float(cake["lastPrice"])
+    cc = float(cake["priceChangePercent"])
+    ch = float(cake["highPrice"])
+    cl = float(cake["lowPrice"])
+    cf = "${:,.3f}" if cp < 1 else "${:,.2f}"
+
+    msg += "---\n\U0001f95f CAKE\n"
+    msg += f"   {cf.format(cp)} {'🟢' if cc >= 0 else '🔴'} {cc:+.2f}%\n"
+    msg += f"   📈 {cf.format(ch)} | 📉 {cf.format(cl)}"
     return msg
 
+
 def send_telegram(message):
-    token = os.getenv('TELEGRAM_BOT_TOKEN')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("ERROR: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set")
+        print(message)
+        return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-    requests.post(url, data=payload)
+    resp = requests.post(url, data={"chat_id": chat_id, "text": message}, timeout=10)
+    if resp.status_code != 200:
+        print(f"Telegram error {resp.status_code}: {resp.text}")
+
 
 if __name__ == "__main__":
-    coins = get_crypto_data()
-    cake = get_cake()
-    send_telegram(format_msg(coins, cake))
+    try:
+        coins = get_crypto_data()
+        cake = get_cake()
+        msg = format_msg(coins, cake)
+        send_telegram(msg)
+    except Exception as e:
+        print(f"FATAL: {e}")
+        raise
