@@ -2,37 +2,40 @@ import requests
 import os
 from datetime import datetime, timedelta, timezone
 
-BINANCE = "https://api.binance.com/api/v3"
-
-# Stablecoins, fiat pairs, and wrapped tokens to exclude
+# Stablecoins, wrapped tokens, and pegged assets to exclude
 BLACKLIST = {
-    "USDC", "BUSD", "TUSD", "DAI", "FDUSD", "USDP", "USDD", "EUR",
-    "GBP", "AUD", "BRL", "TRY", "AEUR", "UST", "PAXG", "WBTC",
-    "STETH", "WBETH", "BETH", "USD1", "BIDR", "USDCUSDT", "FDUSDUSDT",
+    "USDT", "USDC", "DAI", "BUSD", "TUSD", "FDUSD", "USDP", "USDD",
+    "WBTC", "STETH", "WBETH", "BETH", "WSTETH", "PAXG", "USDE",
+    "EUR", "GBP", "AUD", "BRL", "TRY",
 }
 
 
 def get_crypto_data():
-    """Top 10 USDT pairs by 24h volume from Binance (no API key)."""
-    resp = requests.get(f"{BINANCE}/ticker/24hr", timeout=15)
+    """Top 10 by market cap from CoinPaprika (free, no API key)."""
+    resp = requests.get(
+        "https://api.coinpaprika.com/v1/tickers",
+        params={"limit": 100},
+        timeout=15,
+    )
     resp.raise_for_status()
-    all_tickers = resp.json()
+    tickers = resp.json()
 
-    usdt_pairs = []
-    for t in all_tickers:
-        if not t["symbol"].endswith("USDT"):
+    result = []
+    for t in tickers:
+        if t["symbol"] in BLACKLIST:
             continue
-        base = t["symbol"][:-4]
-        if base in BLACKLIST:
-            continue
-        usdt_pairs.append(t)
-
-    usdt_pairs.sort(key=lambda t: float(t.get("quoteVolume", 0)), reverse=True)
-    return usdt_pairs[:10]
+        result.append(t)
+        if len(result) == 10:
+            break
+    return result
 
 
 def get_cake():
-    resp = requests.get(f"{BINANCE}/ticker/24hr", params={"symbol": "CAKEUSDT"}, timeout=15)
+    """Fetch CAKE specifically from CoinPaprika."""
+    resp = requests.get(
+        "https://api.coinpaprika.com/v1/tickers/cake-pancakeswap",
+        timeout=15,
+    )
     resp.raise_for_status()
     return resp.json()
 
@@ -44,27 +47,22 @@ def format_msg(coins, cake):
     msg = f"\U0001f4ca Top 10 Crypto ({now})\n\n"
 
     for i, coin in enumerate(coins, 1):
-        price = float(coin["lastPrice"])
-        change = float(coin["priceChangePercent"])
-        high = float(coin["highPrice"])
-        low = float(coin["lowPrice"])
+        q = coin["quotes"]["USD"]
+        price = q["price"]
+        change = q["percent_change_24h"] or 0
         emoji = "\U0001f7e2" if change >= 0 else "\U0001f534"
         fmt = "${:,.4f}" if price < 1 else "${:,.2f}"
-        symbol = coin["symbol"].replace("USDT", "")
 
-        msg += f"{i}. {symbol}\n"
-        msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n"
-        msg += f"   \U0001f4c8 {fmt.format(high)} | \U0001f4c9 {fmt.format(low)}\n\n"
+        msg += f"{i}. {coin['symbol']}\n"
+        msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n\n"
 
-    cp = float(cake["lastPrice"])
-    cc = float(cake["priceChangePercent"])
-    ch = float(cake["highPrice"])
-    cl = float(cake["lowPrice"])
+    q = cake["quotes"]["USD"]
+    cp = q["price"]
+    cc = q["percent_change_24h"] or 0
     cf = "${:,.3f}" if cp < 1 else "${:,.2f}"
 
     msg += "---\n\U0001f95f CAKE\n"
-    msg += f"   {cf.format(cp)} {'🟢' if cc >= 0 else '🔴'} {cc:+.2f}%\n"
-    msg += f"   📈 {cf.format(ch)} | 📉 {cf.format(cl)}"
+    msg += f"   {cf.format(cp)} {'🟢' if cc >= 0 else '🔴'} {cc:+.2f}%"
     return msg
 
 
