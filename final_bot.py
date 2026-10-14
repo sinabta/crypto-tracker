@@ -83,8 +83,13 @@ def format_msg(all_coins, cake):
 
     cp = cake["current_price"]
     cc = cake["price_change_percentage_24h"] or 0
+    ch = cake.get("high_24h") or 0
+    cl = cake.get("low_24h") or 0
     cf = "${:,.3f}" if cp < 1 else "${:,.2f}"
-    msg += f"\n---\n\U0001f95f CAKE: {cf.format(cp)} ({cc:+.2f}%)"
+
+    msg += "\n---\n\U0001f95f CAKE\n"
+    msg += f"   {cf.format(cp)} {'🟢' if cc >= 0 else '🔴'} {cc:+.2f}%\n"
+    msg += f"   \U0001f4c8 {cf.format(ch)} | \U0001f4c9 {cf.format(cl)}"
     return msg
 
 
