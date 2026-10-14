@@ -62,11 +62,16 @@ def format_msg(all_coins, cake):
     for i, coin in enumerate(top_10, 1):
         price = coin["current_price"]
         change = coin["price_change_percentage_24h"] or 0
+        high = coin.get("high_24h") or 0
+        low = coin.get("low_24h") or 0
         emoji = "\U0001f7e2" if change >= 0 else "\U0001f534"
         fmt = "${:,.4f}" if price < 1 else "${:,.2f}"
-        msg += f"{i}. {coin['name']} ({fmt.format(price)} {emoji} {change:+.2f}%)\n"
+        
+        msg += f"{i}. {coin['name']}\n"
+        msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n"
+        msg += f"   \U0001f4c8 {fmt.format(high)} | \U0001f4c9 {fmt.format(low)}\n\n"
 
-    msg += "\n\U0001f3c6 Top Gainers (24h):\n"
+    msg += "\U0001f3c6 Top Gainers (24h):\n"
     for coin in best_3:
         change = coin["price_change_percentage_24h"] or 0
         msg += f"• {coin['name']} ({change:+.2f}%)\n"
