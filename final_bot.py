@@ -1,9 +1,15 @@
 import requests
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 COINGECKO = "https://api.coingecko.com/api/v3"
-HEADERS = {"x-cg-demo-api-key": os.getenv("COINGECKO_API_KEY", "CG-kDLigiy8EcKVENdf7cKEDbUL")}
+
+def _cg_headers():
+    key = os.getenv("COINGECKO_API_KEY")
+    if not key:
+        raise RuntimeError("COINGECKO_API_KEY env var is not set")
+    return {"x-cg-demo-api-key": key}
 
 # Stablecoins and wrapped tokens to exclude
 BLACKLIST = {
@@ -13,38 +19,40 @@ BLACKLIST = {
 }
 
 
+def _cg_get(path, params, retries=3):
+    """GET with retry on rate-limit / transient errors."""
+    for attempt in range(retries):
+        resp = requests.get(f"{COINGECKO}{path}", params=params,
+                            headers=_cg_headers(), timeout=15)
+        if resp.status_code == 429 and attempt < retries - 1:
+            wait = 2 ** attempt * 10
+            print(f"CoinGecko rate-limited, retrying in {wait}s...")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise RuntimeError("CoinGecko kept rate-limiting us")
+
+
 def get_crypto_data():
     """Top non-stablecoin cryptos by market cap from CoinGecko."""
-    resp = requests.get(
-        f"{COINGECKO}/coins/markets",
-        params={
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 100,
-            "page": 1,
-            "price_change_percentage": "24h",
-        },
-        headers=HEADERS,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    coins = [c for c in resp.json() if c["id"] not in BLACKLIST]
-    return coins
+    coins = _cg_get("/coins/markets", {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 100,
+        "page": 1,
+        "price_change_percentage": "24h",
+    })
+    return [c for c in coins if c["id"] not in BLACKLIST]
 
 
 def get_cake():
-    resp = requests.get(
-        f"{COINGECKO}/coins/markets",
-        params={
-            "vs_currency": "usd",
-            "ids": "pancakeswap-token",
-            "price_change_percentage": "24h",
-        },
-        headers=HEADERS,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()[0]
+    coins = _cg_get("/coins/markets", {
+        "vs_currency": "usd",
+        "ids": "pancakeswap-token",
+        "price_change_percentage": "24h",
+    })
+    return coins[0]
 
 
 def format_msg(all_coins, cake):
@@ -66,7 +74,7 @@ def format_msg(all_coins, cake):
         low = coin.get("low_24h") or 0
         emoji = "\U0001f7e2" if change >= 0 else "\U0001f534"
         fmt = "${:,.4f}" if price < 1 else "${:,.2f}"
-        
+
         msg += f"{i}. {coin['name']}\n"
         msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n"
         msg += f"   \U0001f4c8 {fmt.format(high)} | \U0001f4c9 {fmt.format(low)}\n\n"
@@ -100,7 +108,11 @@ def send_telegram(message):
         print("ERROR: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set")
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    requests.post(url, data={"chat_id": chat_id, "text": message}, timeout=10)
+    resp = requests.post(url, data={"chat_id": chat_id, "text": message}, timeout=10)
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram send failed: {data}")
+    print(f"Telegram message sent (id={data['result']['message_id']})")
 
 
 if __name__ == "__main__":
