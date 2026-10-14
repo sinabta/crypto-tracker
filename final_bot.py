@@ -46,21 +46,6 @@ def get_crypto_data():
     return [c for c in coins if c["id"] not in BLACKLIST]
 
 
-def get_gainers_losers():
-    """Top gainers/losers from CoinGecko's dedicated endpoint.
-    Returns (gainers, losers) or (None, None) if unavailable (e.g. demo plan)."""
-    try:
-        data = _cg_get("/coins/top_gainers_losers",
-                       {"vs_currency": "usd", "duration": "24h"})
-        gainers = data.get("top_gainers") or []
-        losers = data.get("top_losers") or []
-        if gainers and losers:
-            return gainers, losers
-    except Exception:
-        pass
-    return None, None
-
-
 def get_cake():
     coins = _cg_get("/coins/markets", {
         "vs_currency": "usd",
@@ -70,18 +55,11 @@ def get_cake():
     return coins[0]
 
 
-def format_msg(all_coins, cake, gainers=None, losers=None):
+def format_msg(all_coins, cake):
     iran_time = datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)
     now = iran_time.strftime("%H:%M")
 
     top_10 = all_coins[:10]
-    if gainers and losers:
-        best_3 = [(c["name"], c.get("usd_24h_change") or 0) for c in gainers[:3]]
-        worst_3 = [(c["name"], c.get("usd_24h_change") or 0) for c in losers[:3]]
-    else:
-        sorted_by_change = sorted(all_coins, key=lambda x: x.get('price_change_percentage_24h') or 0, reverse=True)
-        best_3 = [(c["name"], c.get("price_change_percentage_24h") or 0) for c in sorted_by_change[:3]]
-        worst_3 = [(c["name"], c.get("price_change_percentage_24h") or 0) for c in sorted_by_change[-3:]]
 
     msg = f"\U0001f4ca Crypto Report ({now})\n\n"
 
@@ -98,13 +76,6 @@ def format_msg(all_coins, cake, gainers=None, losers=None):
         msg += f"   {fmt.format(price)} {emoji} {change:+.2f}%\n"
         msg += f"   \U0001f4c8 {fmt.format(high)} | \U0001f4c9 {fmt.format(low)}\n\n"
 
-    msg += "\U0001f3c6 Top Gainers (24h):\n"
-    for name, change in best_3:
-        msg += f"• {name} ({change:+.2f}%)\n"
-
-    msg += "\n\U0001f409 Top Losers (24h):\n"
-    for name, change in worst_3:
-        msg += f"• {name} ({change:+.2f}%)\n"
 
     cp = cake["current_price"]
     cc = cake["price_change_percentage_24h"] or 0
@@ -136,8 +107,7 @@ if __name__ == "__main__":
     try:
         all_coins = get_crypto_data()
         cake = get_cake()
-        gainers, losers = get_gainers_losers()
-        msg = format_msg(all_coins, cake, gainers, losers)
+        msg = format_msg(all_coins, cake)
         send_telegram(msg)
     except Exception as e:
         print(f"FATAL: {e}")
